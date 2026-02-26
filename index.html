@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>黒フチ除去ツール</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #222;
+    --accent: #e8ff47;
+    --text: #f0f0f0;
+    --muted: #555;
+    --success: #4ade80;
+    --danger: #f87171;
+    --warn: #facc15;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+    gap: 28px;
+  }
+
+  header { text-align: center; }
+
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  h1 span { color: var(--accent); }
+
+  .sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .drop-zone {
+    width: 100%; max-width: 720px;
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    padding: 56px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(232,255,71,0.03);
+  }
+  .drop-zone input {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+  .drop-label { font-size: 1rem; color: var(--muted); }
+  .drop-label strong { color: var(--accent); font-weight: 700; }
+
+  .controls {
+    width: 100%; max-width: 720px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .slider-group { flex: 1; min-width: 160px; }
+  .slider-group label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    display: flex; justify-content: space-between; margin-bottom: 6px;
+  }
+  .slider-group label output { color: var(--accent); font-weight: 500; }
+
+  input[type="range"] {
+    width: 100%; -webkit-appearance: none; appearance: none;
+    height: 4px; background: var(--border); border-radius: 2px; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    background: var(--accent); border-radius: 50%; cursor: pointer;
+  }
+
+  .format-row {
+    width: 100%; max-width: 720px;
+    display: none; gap: 10px; align-items: center; flex-wrap: wrap;
+  }
+  .format-row.active { display: flex; }
+
+  .format-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  .format-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.75rem;
+    padding: 6px 14px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    cursor: pointer; border-radius: 2px; transition: all 0.15s;
+  }
+  .format-btn:hover { border-color: var(--accent); color: var(--text); }
+  .format-btn.selected { border-color: var(--accent); color: var(--accent); background: rgba(232,255,71,0.08); }
+
+  .btn {
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem;
+    padding: 10px 24px; border: 2px solid var(--accent);
+    background: transparent; color: var(--accent);
+    cursor: pointer; transition: all 0.15s;
+    text-transform: uppercase; letter-spacing: 0.05em; border-radius: 2px;
+  }
+  .btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+  .btn:disabled { opacity: 0.25; cursor: not-allowed; }
+  .btn-download { border-color: var(--success); color: var(--success); }
+  .btn-download:hover:not(:disabled) { background: var(--success); color: var(--bg); }
+
+  .toast {
+    position: fixed; top: 20px; right: 20px;
+    padding: 14px 24px; border-radius: 4px;
+    font-family: 'DM Mono', monospace; font-size: 0.82rem; font-weight: 500;
+    z-index: 1000; transform: translateX(120%);
+    transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
+    display: flex; align-items: center; gap: 10px;
+    max-width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .toast.show { transform: translateX(0); }
+  .toast-success { background: #0a2a0a; border: 1px solid var(--success); color: var(--success); }
+  .toast-info { background: #0a0a2a; border: 1px solid #60a5fa; color: #60a5fa; }
+  .toast-warn { background: #2a2a0a; border: 1px solid var(--warn); color: var(--warn); }
+  .toast-icon { font-size: 1.2rem; flex-shrink: 0; }
+
+  .preview-area { width: 100%; max-width: 720px; display: none; }
+  .preview-area.active { display: block; }
+
+  .preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .preview-grid { grid-template-columns: 1fr; } }
+
+  .preview-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; overflow: hidden;
+  }
+  .preview-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  }
+  .preview-header .size { color: var(--accent); }
+
+  .preview-body {
+    padding: 12px; display: flex; align-items: center; justify-content: center;
+    min-height: 200px;
+    background: repeating-conic-gradient(#181818 0% 25%, #111 0% 50%) 50% / 16px 16px;
+  }
+  .preview-body img {
+    max-width: 100%; max-height: 350px; display: block; object-fit: contain;
+  }
+  .preview-body canvas {
+    max-width: 100%; max-height: 350px; display: block; object-fit: contain;
+  }
+
+  .size-compare {
+    width: 100%; max-width: 720px;
+    display: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 16px 20px;
+  }
+  .size-compare.active { display: block; }
+
+  .size-compare-title {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+
+  .size-bar-wrap { position: relative; height: 28px; margin-bottom: 8px; }
+  .size-bar-bg {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .size-bar-orig { height: 100%; background: rgba(255,255,255,0.08); border-radius: 3px; width: 100%; }
+  .size-bar-new {
+    position: absolute; top: 0; left: 0; height: 100%;
+    border-radius: 3px; transition: width 0.5s ease, background 0.3s;
+  }
+  .size-bar-new.smaller { background: var(--success); }
+  .size-bar-new.larger { background: var(--danger); }
+  .size-bar-new.same { background: var(--warn); }
+
+  .size-labels {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'DM Mono', monospace; font-size: 0.78rem;
+  }
+  .size-orig-label { color: var(--muted); }
+  .size-new-label { font-weight: 500; }
+  .size-new-label.smaller { color: var(--success); }
+  .size-new-label.larger { color: var(--danger); }
+  .size-new-label.same { color: var(--warn); }
+
+  .size-diff {
+    text-align: center; margin-top: 8px;
+    font-family: 'DM Mono', monospace; font-size: 0.9rem; font-weight: 500;
+  }
+  .size-diff.smaller { color: var(--success); }
+  .size-diff.larger { color: var(--danger); }
+
+  .info-bar {
+    width: 100%; max-width: 720px;
+    display: none; gap: 12px; flex-wrap: wrap;
+  }
+  .info-bar.active { display: flex; }
+
+  .info-chip {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    padding: 6px 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 2px;
+    color: var(--muted); letter-spacing: 0.05em;
+  }
+  .info-chip strong { color: var(--text); margin-left: 4px; }
+  .info-chip.good strong { color: var(--success); }
+
+  .status {
+    font-family: 'DM Mono', monospace; font-size: 0.75rem;
+    color: var(--muted); text-align: center;
+  }
+
+  canvas.hidden-canvas { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BLACK <span>CROP</span></h1>
+  <p class="sub">画像の黒い枠を自動トリミング</p>
+</header>
+
+<div class="drop-zone" id="dropZone">
+  <div class="drop-icon">📁</div>
+  <p class="drop-label"><strong>クリック</strong> または <strong>ドロップ</strong> で画像を読み込み</p>
+  <input type="file" id="fileInput" accept="image/*">
+</div>
+
+<div class="controls">
+  <div class="slider-group">
+    <label>しきい値 <output id="threshVal">30</output></label>
+    <input type="range" id="threshold" min="0" max="100" value="30">
+  </div>
+  <div class="slider-group">
+    <label>パディング <output id="padVal">0</output>px</label>
+    <input type="range" id="padding" min="0" max="50" value="0">
+  </div>
+  <button class="btn" id="cropBtn" disabled>トリミング</button>
+  <button class="btn btn-download" id="dlBtn" disabled>保存</button>
+</div>
+
+<div class="format-row" id="formatRow">
+  <span class="format-label">出力形式:</span>
+  <button class="format-btn selected" data-fmt="auto">AUTO</button>
+  <button class="format-btn" data-fmt="image/jpeg">JPEG</button>
+  <button class="format-btn" data-fmt="image/webp">WebP</button>
+  <button class="format-btn" data-fmt="image/png">PNG</button>
+</div>
+
+<div class="controls" id="qualityRow" style="display:none;">
+  <div class="slider-group">
+    <label>出力品質 <output id="qualVal">85</output>%</label>
+    <input type="range" id="quality" min="10" max="100" value="85">
+  </div>
+</div>
+
+<div class="size-compare" id="sizeCompare">
+  <div class="size-compare-title">ファイルサイズ比較</div>
+  <div class="size-bar-wrap">
+    <div class="size-bar-bg"><div class="size-bar-orig"></div></div>
+    <div class="size-bar-new" id="sizeBarNew"></div>
+  </div>
+  <div class="size-labels">
+    <span class="size-orig-label" id="sizeOrigLabel">元: -</span>
+    <span class="size-new-label" id="sizeNewLabel">出力: -</span>
+  </div>
+  <div class="size-diff" id="sizeDiff"></div>
+</div>
+
+<div class="preview-area" id="previewArea">
+  <div class="preview-grid">
+    <div class="preview-panel">
+      <div class="preview-header"><span>元画像</span><span class="size" id="origSize">-</span></div>
+      <div class="preview-body" id="previewInBody">
+        <img id="previewIn" alt="元画像">
+      </div>
+    </div>
+    <div class="preview-panel">
+      <div class="preview-header"><span>トリミング後</span><span class="size" id="cropSize">-</span></div>
+      <div class="preview-body" id="previewOutBody"></div>
+    </div>
+  </div>
+</div>
+
+<div class="info-bar" id="infoBar">
+  <div class="info-chip" id="infoRect">CROP: -</div>
+  <div class="info-chip" id="infoPixel">ピクセル削減: -</div>
+</div>
+
+<p class="status" id="status">画像を読み込んでください</p>
+
+<canvas class="hidden-canvas" id="canvasIn"></canvas>
+<canvas class="hidden-canvas" id="canvasOut"></canvas>
+
+<div class="toast toast-success" id="toast">
+  <span class="toast-icon">✅</span>
+  <span id="toastMsg">完了</span>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const dropZone = $('dropZone'), fileInput = $('fileInput');
+const threshold = $('threshold'), padding = $('padding'), quality = $('quality');
+const threshVal = $('threshVal'), padVal = $('padVal'), qualVal = $('qualVal');
+const cropBtn = $('cropBtn'), dlBtn = $('dlBtn');
+const canvasIn = $('canvasIn'), canvasOut = $('canvasOut');
+const previewIn = $('previewIn');
+const previewOutBody = $('previewOutBody');
+const origSize = $('origSize'), cropSize = $('cropSize');
+const previewArea = $('previewArea'), infoBar = $('infoBar');
+const infoRect = $('infoRect'), infoPixel = $('infoPixel');
+const formatRow = $('formatRow'), qualityRow = $('qualityRow');
+const sizeCompare = $('sizeCompare');
+const sizeBarNew = $('sizeBarNew'), sizeOrigLabel = $('sizeOrigLabel');
+const sizeNewLabel = $('sizeNewLabel'), sizeDiff = $('sizeDiff');
+const status = $('status'), toast = $('toast'), toastMsg = $('toastMsg');
+
+let currentImage = null, currentFileName = '', currentMimeType = 'image/png';
+let originalFileSize = 0, croppedBlob = null;
+let selectedFormat = 'auto';
+
+/* ================================================================
+   Fix 1: innerHTML → textContent + DOM helpers
+   すべての動的テキスト挿入を安全な方法に置き換え
+   ================================================================ */
+
+/** info-chip の中身を安全に構築する（ラベル + <strong>値</strong>） */
+function setChipContent(el, label, value, className) {
+  if (className !== undefined) el.className = className;
+  el.textContent = '';
+  const textNode = document.createTextNode(label);
+  const strong = document.createElement('strong');
+  strong.textContent = value;
+  el.appendChild(textNode);
+  el.appendChild(strong);
+}
+
+/* ================================================================
+   Fix 2: ファイル名サニタイズ
+   パストラバーサル文字・制御文字・OS予約名を除去
+   ================================================================ */
+function sanitizeFileName(name) {
+  // 拡張子を除いたベース名を取得
+  let base = name.replace(/\.[^.]+$/, '');
+  // パス区切り・制御文字・OSで問題になる文字を除去
+  base = base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+  // 先頭・末尾のドットやスペースを除去
+  base = base.replace(/^[\s.]+|[\s.]+$/g, '');
+  // 空になった場合のフォールバック
+  if (!base) base = 'cropped_image';
+  // 長すぎるファイル名を切り詰め
+  if (base.length > 200) base = base.substring(0, 200);
+  return base;
+}
+
+/* ================================================================
+   Fix 3: ファイルタイプ検証を強化
+   MIMEタイプ + 拡張子の両方をチェック
+   ================================================================ */
+const ALLOWED_EXTENSIONS = /\.(jpe?g|png|gif|webp|bmp|svg|tiff?|avif|ico)$/i;
+const ALLOWED_MIME_PREFIX = 'image/';
+
+function isValidImageFile(file) {
+  if (!file.type.startsWith(ALLOWED_MIME_PREFIX)) return false;
+  if (!ALLOWED_EXTENSIONS.test(file.name)) return false;
+  return true;
+}
+
+/* ── Toast ── */
+function showToast(msg, type = 'success') {
+  toast.className = `toast toast-${type}`;
+  const icons = { success: '✅', info: 'ℹ️', warn: '⚠️' };
+  toast.querySelector('.toast-icon').textContent = icons[type] || '✅';
+  toastMsg.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+/* ── Format buttons ── */
+document.querySelectorAll('.format-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedFormat = btn.dataset.fmt;
+    updateQualityVisibility();
+    if (currentImage) autoCrop();
+  });
+});
+
+function resolveOutputMime() {
+  if (selectedFormat === 'auto') return currentMimeType;
+  return selectedFormat;
+}
+
+function updateQualityVisibility() {
+  const mime = selectedFormat === 'auto' ? currentMimeType : selectedFormat;
+  qualityRow.style.display = (mime === 'image/jpeg' || mime === 'image/webp') ? 'flex' : 'none';
+}
+
+/* ── Drag & drop ── */
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) loadFile(e.target.files[0]); });
+
+/* ── Sliders ── */
+threshold.addEventListener('input', () => threshVal.textContent = threshold.value);
+padding.addEventListener('input', () => padVal.textContent = padding.value);
+quality.addEventListener('input', () => { qualVal.textContent = quality.value; if (currentImage) autoCrop(); });
+
+cropBtn.addEventListener('click', autoCrop);
+dlBtn.addEventListener('click', downloadResult);
+
+/* ── Load file (Fix 3: 検証強化) ── */
+function loadFile(file) {
+  if (!isValidImageFile(file)) {
+    showToast('対応していないファイル形式です', 'warn');
+    return;
+  }
+  currentFileName = file.name;
+  currentMimeType = file.type;
+  originalFileSize = file.size;
+
+  formatRow.classList.add('active');
+  updateQualityVisibility();
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      // Fix 3: Canvas描画後にピクセルデータが読めるか確認
+      currentImage = img;
+      canvasIn.width = img.width;
+      canvasIn.height = img.height;
+      const ctx = canvasIn.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      try {
+        ctx.getImageData(0, 0, 1, 1);
+      } catch (err) {
+        showToast('画像データの読み取りに失敗しました', 'warn');
+        currentImage = null;
+        return;
+      }
+
+      previewIn.src = e.target.result;
+      origSize.textContent = `${img.width} × ${img.height}`;
+      cropBtn.disabled = false;
+
+      previewOutBody.textContent = '';
+      cropSize.textContent = '-';
+      previewArea.classList.add('active');
+      sizeCompare.classList.remove('active');
+      infoBar.classList.remove('active');
+      dlBtn.disabled = true;
+      croppedBlob = null;
+
+      status.textContent = '画像を読み込みました';
+      showToast(`${sanitizeFileName(file.name)} を読み込みました`, 'info');
+      autoCrop();
+    };
+    img.onerror = () => { showToast('画像の読み込みに失敗しました', 'warn'); };
+    img.src = e.target.result;
+  };
+  reader.onerror = () => { showToast('ファイルの読み取りに失敗しました', 'warn'); };
+  reader.readAsDataURL(file);
+}
+
+/* ── Crop logic ── */
+function autoCrop() {
+  if (!currentImage) return;
+
+  const thresh = parseInt(threshold.value);
+  const pad = parseInt(padding.value);
+  const w = canvasIn.width, h = canvasIn.height;
+  const ctx = canvasIn.getContext('2d');
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  function isDark(x, y) {
+    const i = (y * w + x) * 4;
+    return data[i] <= thresh && data[i+1] <= thresh && data[i+2] <= thresh;
+  }
+
+  let top = 0, bottom = h - 1, left = 0, right = w - 1;
+
+  findTop: for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) if (!isDark(x, y)) { top = y; break findTop; }
+  findBottom: for (let y = h - 1; y >= 0; y--)
+    for (let x = 0; x < w; x++) if (!isDark(x, y)) { bottom = y; break findBottom; }
+  findLeft: for (let x = 0; x < w; x++)
+    for (let y = top; y <= bottom; y++) if (!isDark(x, y)) { left = x; break findLeft; }
+  findRight: for (let x = w - 1; x >= 0; x--)
+    for (let y = top; y <= bottom; y++) if (!isDark(x, y)) { right = x; break findRight; }
+
+  top = Math.max(0, top - pad);
+  bottom = Math.min(h - 1, bottom + pad);
+  left = Math.max(0, left - pad);
+  right = Math.min(w - 1, right + pad);
+
+  const cw = right - left + 1, ch = bottom - top + 1;
+
+  canvasOut.width = cw;
+  canvasOut.height = ch;
+  canvasOut.getContext('2d').drawImage(canvasIn, left, top, cw, ch, 0, 0, cw, ch);
+
+  showCanvasPreview(cw, ch);
+  cropSize.textContent = `${cw} × ${ch}`;
+
+  /* Fix 1: innerHTML → setChipContent */
+  setChipContent(infoRect, 'CROP: ', `x:${left} y:${top} → ${right},${bottom}`, 'info-chip');
+  const pixRatio = (100 - (cw * ch) / (w * h) * 100).toFixed(1);
+  setChipContent(
+    infoPixel, 'ピクセル削減: ', `${pixRatio}%`,
+    `info-chip${parseFloat(pixRatio) > 0 ? ' good' : ''}`
+  );
+
+  previewArea.classList.add('active');
+  infoBar.classList.add('active');
+
+  let outMime = resolveOutputMime();
+  if (!['image/png','image/jpeg','image/webp'].includes(outMime)) outMime = 'image/png';
+
+  status.textContent = '最適なファイルサイズを計算中...';
+
+  if (outMime === 'image/png') {
+    generatePngWithFallback(cw, ch, w, h);
+  } else {
+    generateLossyOptimized(outMime, cw, ch, w, h);
+  }
+}
+
+/* ── Canvas preview (直接DOM挿入) ── */
+function showCanvasPreview(cw, ch) {
+  previewOutBody.textContent = '';
+
+  const displayCanvas = document.createElement('canvas');
+  displayCanvas.width = cw;
+  displayCanvas.height = ch;
+  displayCanvas.getContext('2d').drawImage(canvasOut, 0, 0);
+
+  displayCanvas.style.maxWidth = '100%';
+  displayCanvas.style.maxHeight = '350px';
+  displayCanvas.style.display = 'block';
+  displayCanvas.style.objectFit = 'contain';
+  displayCanvas.style.margin = '0 auto';
+
+  previewOutBody.appendChild(displayCanvas);
+}
+
+/* ── PNG → 元より大きければ WebP フォールバック ── */
+function generatePngWithFallback(cw, ch, origW, origH) {
+  canvasOut.toBlob(pngBlob => {
+    if (!pngBlob) { status.textContent = 'エラー: Blob生成失敗'; return; }
+
+    if (pngBlob.size <= originalFileSize) {
+      finalizeSizeInfo(pngBlob, cw, ch, origW, origH, 'image/png');
+    } else {
+      status.textContent = 'PNG容量超過 → WebP自動変換中...';
+      autoFitLossy('image/webp', cw, ch, origW, origH, 0.92);
+    }
+  }, 'image/png');
+}
+
+/* ── Lossy: ユーザー指定品質 → 元より大きければ自動調整 ── */
+function generateLossyOptimized(outMime, cw, ch, origW, origH) {
+  const userQual = parseInt(quality.value) / 100;
+
+  canvasOut.toBlob(blob => {
+    if (!blob) { status.textContent = 'エラー'; return; }
+
+    if (blob.size <= originalFileSize) {
+      finalizeSizeInfo(blob, cw, ch, origW, origH, outMime);
+    } else {
+      status.textContent = '品質を自動調整中...';
+      autoFitLossy(outMime, cw, ch, origW, origH, userQual - 0.05);
+    }
+  }, outMime, userQual);
+}
+
+/* ================================================================
+   Fix 4: 品質自動調整ループにガード追加
+   最大15回の試行で打ち切り、無限ループを防止
+   ================================================================ */
+const MAX_QUALITY_ATTEMPTS = 15;
+
+function autoFitLossy(mime, cw, ch, origW, origH, startQ) {
+  let q = Math.min(startQ, 0.92);
+  let attempts = 0;
+
+  const tryNext = () => {
+    attempts++;
+    canvasOut.toBlob(blob => {
+      if (!blob) { status.textContent = 'エラー'; return; }
+
+      if (blob.size <= originalFileSize || q <= 0.2 || attempts >= MAX_QUALITY_ATTEMPTS) {
+        const finalQ = Math.round(q * 100);
+        quality.value = finalQ;
+        qualVal.textContent = finalQ;
+        qualityRow.style.display = 'flex';
+
+        if (blob.size > originalFileSize) {
+          // ガード到達: これ以上の削減が困難
+          showToast('元ファイルより小さくできませんでした', 'warn');
+        }
+        finalizeSizeInfo(blob, cw, ch, origW, origH, mime);
+      } else {
+        q -= 0.05;
+        tryNext();
+      }
+    }, mime, q);
+  };
+  tryNext();
+}
+
+/* ── サイズ比較UI更新 + 完了 ── */
+function finalizeSizeInfo(blob, cw, ch, origW, origH, outMime) {
+  croppedBlob = blob;
+  dlBtn.disabled = false;
+
+  const newSize = blob.size;
+  const pct = (newSize / originalFileSize * 100);
+  const diffPct = ((newSize - originalFileSize) / originalFileSize * 100).toFixed(1);
+  const cls = newSize < originalFileSize * 0.98 ? 'smaller'
+            : newSize > originalFileSize * 1.02 ? 'larger' : 'same';
+
+  sizeBarNew.style.width = Math.min(pct, 100).toFixed(1) + '%';
+  sizeBarNew.className = `size-bar-new ${cls}`;
+  sizeOrigLabel.textContent = `元: ${fmtB(originalFileSize)}`;
+  sizeNewLabel.textContent = `出力: ${fmtB(newSize)}`;
+  sizeNewLabel.className = `size-new-label ${cls}`;
+
+  const saved = originalFileSize - newSize;
+  if (saved > 0) {
+    sizeDiff.className = 'size-diff smaller';
+    sizeDiff.textContent = `▼ ${fmtB(saved)} 削減 (${Math.abs(parseFloat(diffPct))}%)`;
+  } else if (saved < 0) {
+    sizeDiff.className = 'size-diff larger';
+    sizeDiff.textContent = `▲ ${fmtB(-saved)} 増加 (+${Math.abs(parseFloat(diffPct))}%)`;
+  } else {
+    sizeDiff.className = 'size-diff';
+    sizeDiff.textContent = '同等';
+  }
+
+  sizeCompare.classList.add('active');
+
+  const extLabel = outMime === 'image/jpeg' ? 'JPEG' : outMime === 'image/webp' ? 'WebP' : 'PNG';
+  status.textContent = `トリミング完了: ${origW}×${origH} → ${cw}×${ch} [${extLabel}]`;
+  showToast(`完了！ ${fmtB(originalFileSize)} → ${fmtB(newSize)} (${extLabel})`, 'success');
+}
+
+/* ── Download (Fix 2: サニタイズ済みファイル名) ── */
+function downloadResult() {
+  if (!croppedBlob) { showToast('先にトリミングしてください', 'info'); return; }
+
+  const ext = extOf(croppedBlob.type);
+  const base = sanitizeFileName(currentFileName);
+  const name = `${base}_cropped.${ext}`;
+
+  const url = URL.createObjectURL(croppedBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  showToast(`${name} (${fmtB(croppedBlob.size)}) を保存しました`, 'success');
+}
+
+/* ── Util ── */
+function extOf(mime) {
+  if (mime === 'image/jpeg') return 'jpg';
+  if (mime === 'image/webp') return 'webp';
+  return 'png';
+}
+
+function fmtB(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(2) + ' MB';
+}
+</script>
+</body>
+</html>
