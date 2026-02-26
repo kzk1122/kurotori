@@ -680,13 +680,26 @@ function finalizeSizeInfo(blob, cw, ch, origW, origH, outMime) {
 }
 
 /* ── Download (Fix 2: サニタイズ済みファイル名) ── */
-function downloadResult() {
+async function downloadResult() {
   if (!croppedBlob) { showToast('先にトリミングしてください', 'info'); return; }
 
   const ext = extOf(croppedBlob.type);
   const base = sanitizeFileName(currentFileName);
   const name = `${base}_cropped.${ext}`;
+  const file = new File([croppedBlob], name, { type: croppedBlob.type });
 
+  // iOS Safari: Web Share API 経由で共有シートを開く → 写真に保存が可能
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // ユーザーがキャンセル
+      // その他のエラーは通常ダウンロードへフォールバック
+    }
+  }
+
+  // デスクトップ等: 従来のダウンロード
   const url = URL.createObjectURL(croppedBlob);
   const a = document.createElement('a');
   a.href = url;
